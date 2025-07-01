@@ -1,3 +1,15 @@
+"""MapReduce Summarization Engine
+This module implements the core summarization engine for the asynchronous 
+streaming summary generator API. It manages chunking of input paragraphs, 
+parallel processing using OpenAI's language model, and real-time progress 
+streaming to clients. It includes task management, prompt handling, 
+and final aggregation of summaries.
+
+Key Components:
+- Summarizer: Manages chunking, LLM interactions, and progress updates.
+- TaskManager: Handles subscribers and progress tracking.
+- FastAPI route: `/summarize` endpoint for summary generation.
+"""
 import os
 from src.models import SummaryRequestModel
 from src.log import logger
@@ -23,6 +35,17 @@ load_dotenv()
 
 @dataclass
 class SummaryConfig:
+    """
+    Configuration for the summarizer engine.
+    
+    Attributes:
+        primary_chunk_size (int): Number of paragraphs per primary chunk.
+        secondary_chunk_size (int): Number of items per secondary reduction chunk.
+        max_parallel_requests (int): Maximum concurrent requests allowed.
+        model (str): OpenAI model identifier.
+        temperature (float): LLM creativity control.
+        max_tokens_per_request (int): Maximum tokens allowed per request.
+    """
     primary_chunk_size: int = 10
     secondary_chunk_size: int = 10
     max_parallel_requests: int = 10
@@ -31,6 +54,15 @@ class SummaryConfig:
     max_tokens_per_request: int = 800
 
 class TaskManager:
+    """
+    Manages task lifecycle and progress broadcasting for each summarization job.
+
+    Responsibilities:
+        - Tracks progress for each task.
+        - Manages multiple SSE subscribers per task.
+        - Cleans up completed tasks.
+    """
+
     def __init__(self):
         self.tasks = defaultdict(lambda: {
             'primary_progress': 0,
@@ -41,25 +73,45 @@ class TaskManager:
         })
 
     async def create_subscriber(self, task_id: str) -> asyncio.Queue:
+        """
+        Registers a new subscriber to a task's progress stream.
+        """
         queue = asyncio.Queue()
         self.tasks[task_id]['subscribers'].add(queue)
         return queue
 
     async def remove_subscriber(self, task_id: str, queue: asyncio.Queue):
+        """
+        Unsubscribes a listener from a task's progress events.
+        """
         if task_id in self.tasks:
             self.tasks[task_id]['subscribers'].discard(queue)
 
     async def broadcast_progress(self, task_id: str, event_type: str, data: Dict):
+        """
+        Broadcasts progress updates to all subscribers of a task.
+        """
         event = {'type': event_type, **data}
         for queue in self.tasks[task_id]['subscribers']:
             await queue.put(event)
 
     def cleanup_task(self, task_id: str):
+        """
+        Deletes the task's metadata and removes all subscribers.
+        """
         if task_id in self.tasks:
             del self.tasks[task_id]
 
 
 class Summarizer:
+    """
+    Handles the chunking, processing, and summarization logic using OpenAI's API.
+    
+    Attributes:
+        client (AsyncOpenAI): OpenAI async client.
+        config (SummaryConfig): Configuration for the summarization.
+        task_manager (TaskManager): Task progress manager.
+    """
     def __init__(self, api_key: str, config: Optional[SummaryConfig] = None):
         self.client = AsyncOpenAI(api_key=api_key,
                                   base_url=os.getenv("BASE_URL")
@@ -68,6 +120,12 @@ class Summarizer:
         self.task_manager = TaskManager()
 
     def create_chunks(self, paragraphs: List[str]) -> Tuple[List[List[str]], int, int]:
+        """
+        Splits input paragraphs into primary and secondary chunks for processing.
+        
+        Returns:
+            Tuple of (primary_chunks, num_primary_chunks, num_secondary_chunks)
+        """
         # Create primary chunks
         primary_chunks = [
             paragraphs[i:i + self.config.primary_chunk_size]
@@ -87,6 +145,10 @@ class Summarizer:
 
     async def process_chunk(self, system_prompt: str, 
                           user_prompt: str) -> str:
+        """
+        Calls the OpenAI model with given prompts, processes a single chunk of text, 
+        and returns the response.
+        """
         try:
             response = await self.client.chat.completions.create(
                 model=self.config.model,
@@ -110,7 +172,9 @@ class Summarizer:
                                   chunks: List[str], total_chunks: int,
                                   system_prompt:str,
                                   primary_prompt:str) -> str:
-        
+        """
+        Summarizes a primary chunk and broadcasts its progress.
+        """
         content = "\n\n".join(chunks)
         user_prompt = primary_prompt + f"\n\nContent:\n{content}"
         
@@ -129,7 +193,9 @@ class Summarizer:
     async def process_secondary_chunk(self, task_id: str, chunk_idx: int,
                                     chunks: List[str], total_chunks: int,
                                     system_prompt:str, secondary_reduction_prompt:str) -> str:
-        
+        """
+        Summarizes a secondary chunk and broadcasts its progress.
+        """
         content = "\n\n".join(chunks)
         user_prompt = secondary_reduction_prompt + f"\n\nContent:\n{content}"
         
@@ -148,7 +214,10 @@ class Summarizer:
     async def generate_final_summary(self, task_id: str, summaries: List[str],
                                     system_prompt:str, final_reduction_prompt:str
                                     ) -> AsyncGenerator[str, None]:
-        
+        """
+        Aggregates all secondary summaries into a final summary. 
+        Streams tokens to subscribers in real-time.
+        """
         content = "\n\n".join(summaries)
         user_prompt = final_reduction_prompt + f"\n\nContent:\n{content}"
         
@@ -177,6 +246,12 @@ class Summarizer:
     async def process_text(self, task_id: str, paragraphs: List[str],
                            system_prompt:str, primary_prompt:str, secondary_reduction_prompt:str, final_reduction_prompt:str
                            ) -> None:
+        """
+        Orchestrates the full summarization pipeline:
+        - Primary summarization
+        - Secondary reduction
+        - Final summary generation
+        """
         try:
             # Create chunks
             primary_chunks, primary_count, *_ = self.create_chunks(paragraphs)
@@ -244,6 +319,12 @@ def get_working_prompts(input_prompt_field: Optional[str], prompt_type:str)->str
 
 
 async def get_full_text(event_generator):
+    """
+    Collects the streamed final summary from the generator and returns the full output.
+    
+    Returns:
+        (summary_text, time_taken_in_seconds, status_code)
+    """
     full_summary = []
     start_time = time.time()
     async for line in event_generator():
@@ -265,6 +346,16 @@ async def get_full_text(event_generator):
 # Update the /summarize endpoint
 @new_router.post("/summarize")
 async def create_summary(request: SummaryRequestModel):
+    """
+    Endpoint to initiate summarization. Supports both streaming and full response.
+    
+    Request:
+        SummaryRequestModel with configuration and input paragraphs.
+
+    Response:
+        - StreamingResponse with SSE events if `stream=True`
+        - JSONResponse with full summary and execution time otherwise
+    """
     task_id = str(uuid.uuid4())
     with tracer.start_as_current_span("summarize") as start_trace:
 
