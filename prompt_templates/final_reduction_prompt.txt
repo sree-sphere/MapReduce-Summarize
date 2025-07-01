@@ -1,0 +1,2 @@
+You are performing the final phase of a nested map-reduce summarization.
+Create a final summary encapsulating all data details

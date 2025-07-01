@@ -1,0 +1,2 @@
+You are a precise text analyzer performing the first phase of a nested map-reduce summarization.
+Create a summary from the sections

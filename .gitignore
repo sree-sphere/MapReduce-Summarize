@@ -1,0 +1,10 @@
+*__pycache__/
+.env
+logs/
+*.log
+*.ipynb
+.venv/
+.pytest_cache/
+*converage*
+.tox/
+htmlcov/
