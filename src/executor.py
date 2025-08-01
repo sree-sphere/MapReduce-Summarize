@@ -21,11 +21,8 @@ import asyncio
 import json
 from collections import defaultdict
 import uuid
-from collections import defaultdict
-import uuid
 from openai import AsyncOpenAI,OpenAIError
 from dotenv import load_dotenv
-from dataclasses import dataclass
 from dataclasses import dataclass
 from datetime import datetime
 import time

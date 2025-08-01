@@ -10,4 +10,4 @@ COPY . /app/
 EXPOSE 8007
 
 # Command to run the FastAPI application
-CMD ["uvicorn", "src.endpoints:app", "--host", "0.0.0.0", "--port", "8009"]
+CMD ["uvicorn", "src.endpoints:app_v1", "--host", "0.0.0.0", "--port", "8009"]

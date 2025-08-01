@@ -30,8 +30,8 @@ A FastAPI-based text summarization service that implements a MapReduce-style app
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-org/your-repo.git
-   cd your-repo
+   git clone https://github.com/sree-sphere/MapReduce-Summarize.git
+   cd MapReduce-Summarize
    ```
 
 2. Create & activate a virtual environment:
@@ -52,17 +52,18 @@ A FastAPI-based text summarization service that implements a MapReduce-style app
 - **Environment Variables**:
 
 ```bash
-OPENAI_API_KEY=your_openai_key
-BASE_URL=your_openai_api_base_url
-LLM_MODEL=your_preferred_model
-OTEL_EXPORTER=your_otel_endpoint  # Optional for tracing
+OPENAI_API_KEY=openai_key
+BASE_URL=openai_api_base_url
+LLM_MODEL=llm_model
+OTEL_EXPORTER=otel_endpoint  # Optional for tracing like "http://localhost:4317"
+
 APP_NAME=summarizer  # Optional service name for tracing
 ```
 
 ## Running Locally
 
 ```bash
-uvicorn src.endpoints:app --reload
+uvicorn src.endpoints:app_v1 --reload
 ```
 
 ## Docker Usage

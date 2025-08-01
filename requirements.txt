@@ -5,5 +5,5 @@ openai==1.93.0
 pydantic==2.10.6
 pytest==8.3.5
 python-dotenv==1.1.0
-requests==2.32.3
+requests==2.32.4
 starlette==0.41.3
